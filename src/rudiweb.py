@@ -27,6 +27,7 @@ Classes:
 * `RudiFile`
 * `RudiHandler`
 * `RudiServer`
+* `RudiTransformer`
 """
 
 __VERSION__ = "0.1"
@@ -130,6 +131,7 @@ ASIS_EXTENSIONS = set(EXT_TO_CONTENTTYPE.keys())
 for key in [".html", None]:
     ASIS_EXTENSIONS.discard(key)
 
+DECORATABLE_EXTENSIONS = [".html"]
 
 # available globally
 server = None
@@ -508,10 +510,12 @@ class RudiHandler(BaseHTTPRequestHandler):
         """Response with decorated HTML content."""
         parts = []
 
+        content = server.rudi_transformer.transform(rudif, rudif.load())
+
         # TODO: missing <title> in <head> block!
         parts.append(RudiFile(self, "/.rudi/includes/top.html", dtype="t").load())
         parts.append(RudiFile(self, "/.rudi/includes/navbar.html", dtype="t").load())
-        parts.append(rudif.load())
+        parts.append(content)
         parts.append(RudiFile(self, "/.rudi/includes/footer.html", dtype="t").load())
         parts.append(RudiFile(self, "/.rudi/includes/bottom.html", dtype="t").load())
 
@@ -557,7 +561,7 @@ class RudiHandler(BaseHTTPRequestHandler):
                 self.do_404_response(docpath)
                 return
 
-            if ext in [".html"]:
+            if ext in DECORATABLE_EXTENSIONS:
                 self.do_decorated_response(rudif)
             elif ext in ASIS_EXTENSIONS:
                 self.do_asis_response(rudif)
@@ -603,6 +607,7 @@ class RudiServer(ThreadingHTTPServer):
         self.debug = config.get("debug", {}).get("enable", False)
 
         self.rudi_access = RudiAccess(config)
+        self.rudi_transformer = RudiTransformer(config)
 
         # content
         # TODO: move this out of server (but ensure it is computed once?)
@@ -610,6 +615,9 @@ class RudiServer(ThreadingHTTPServer):
             re.compile(x) for x in config.get("content", {}).get("asis", {}).get("regexps", [])
         ]
         self.index_files = config.get("index-files", ["index.html"])
+
+        # transformers
+        DECORATABLE_EXTENSIONS.extend(self.rudi_transformer.get_extensions())
 
         # init superclass
         logger.debug(f"{self.site_root=} {self.document_root=} {self.rudi_root}")
@@ -706,6 +714,52 @@ def setup_logging(config):
     if kwargs.get("handlers"):
         logging.basicConfig(**kwargs)
     logger = logging.getLogger(__name__)
+
+
+class RudiTransformer:
+    """Transforms input to HTML."""
+
+    def __init__(self, config):
+        self.config = config
+
+        self.ext2transformer = self.config.get("content", {}).get("transformers", {})
+
+    def get_extensions(self):
+        """Return list of extensions for supported transformers."""
+        return list(self.ext2transformer.keys())
+
+    def transform(self, rudif, content):
+        """Transform raw content according to the extension."""
+        try:
+            transformer = self.ext2transformer.get(rudif.get_extension())
+            if transformer == None:
+                # identity
+                return content
+
+            path = server.resolve_sitepath(transformer.get("file"))
+            args = transformer.get("args", [])
+            if path != None:
+                try:
+                    cp = subprocess.run(
+                        [path] + args,
+                        capture_output=True,
+                        text=False,
+                        env=rudif.get_cgi_variables(),
+                        input=content,
+                    )
+                    if cp.returncode != 0:
+                        # TODO: does this expose too much?
+                        raise Exception(cp.stderr)
+                    return cp.stdout.decode("utf-8")
+                except Exception as e:
+                    if server.debug:
+                        traceback.print_exc()
+                    logger.debug(f"EXCEPTION ({e})")
+
+        except Exception as e:
+            if server.debug:
+                traceback.print_exc()
+            logger.debug(f"EXCEPTION ({e})")
 
 
 def print_usage():
