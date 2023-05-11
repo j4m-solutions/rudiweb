@@ -611,13 +611,18 @@ class RudiServer(ThreadingHTTPServer):
         self.rudi_transformer = RudiTransformer(config)
 
         # content
+
+        ## asis
         # TODO: move this out of server (but ensure it is computed once?)
         self.asis_cregexps = [
             re.compile(x) for x in config.get("content", {}).get("asis", {}).get("regexps", [])
         ]
         self.index_files = config.get("index-files", ["index.html"])
 
-        # transformers
+        ## extensions
+        EXT_TO_CONTENTTYPE.update(config.get("content", {}).get("extensions", {}))
+
+        ## transformers
         DECORATABLE_EXTENSIONS.extend(self.rudi_transformer.get_extensions())
 
         # init superclass
