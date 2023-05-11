@@ -73,6 +73,7 @@ EXT_TO_CONTENTTYPE = {
     ".bz2": "application/x-bzip2",
     ".css": "text/css",
     ".csv": "text/csv",
+    ".directory": "application/directory",
     ".doc": "application/msword",
     ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     ".gif": "image/gif",
