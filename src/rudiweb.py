@@ -203,7 +203,7 @@ class RudiFile:
         self.dtype = dtype
         self.fallback = fallback
 
-        self.path = server.resolve_path(self.docpath)
+        self.path = server.resolve_docpath(self.docpath)
 
         # TODO: docpath should never be None!
         if self.docpath != None:
@@ -283,7 +283,7 @@ class RudiFile:
                 # cgi
                 #
                 "PATH_INFO": parsed.path or "",
-                "PATH_TRANSLATED": server.resolve_path(parsed.path) or "",
+                "PATH_TRANSLATED": server.resolve_docpath(parsed.path) or "",
                 "QUERY_STRING": parsed.query or "",
                 # TODO: ensure ip address
                 "REQUEST_ADDR": self.handler.client_address[0],
@@ -550,7 +550,7 @@ class RudiHandler(BaseHTTPRequestHandler):
             logger.debug(f"do_default_response ({docpath=})")
 
             _, ext = os.path.splitext(docpath)
-            path = server.resolve_path(docpath=docpath)
+            path = server.resolve_docpath(docpath=docpath)
             if not os.path.exists(path):
                 self.do_404_response(docpath)
                 return
@@ -625,7 +625,7 @@ class RudiServer(ThreadingHTTPServer):
             if m:
                 return m
 
-    def resolve_path(self, docpath):
+    def resolve_docpath(self, docpath):
         """Get real path from path for the docpath."""
         if docpath != None:
             if docpath.startswith("/.rudi/"):
@@ -662,7 +662,7 @@ class RudiServer(ThreadingHTTPServer):
         if docpath.endswith("/"):
             for index_file in self.index_files:
                 _docpath = f"{docpath}{index_file}"
-                path = server.resolve_path(_docpath)
+                path = server.resolve_docpath(_docpath)
                 if os.path.exists(path):
                     docpath = _docpath
                     break
