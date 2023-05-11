@@ -19,6 +19,7 @@ rudiweb is provides components:
 * `RudiFile` - Interface for content file access.
 * `RudiHandler` - Subclass of `HTTPRequestHandler`.
 * `RudiServer` - Subclass of `HTTPServer`.
+* `RudiTransformer` - Transforms native content to HTML.
 
 ## Site Organization
 
@@ -141,6 +142,33 @@ By default, site content is served from the `site-root`.
 
 See also [Document Root](#document-root) and [rudi-root](#rudi-root).
 
+### Transformers
+
+A transformer is used when content needs to be transformed. This is typically done to convert from native format (non-HTML) content to HTML. Such is the case for converting markdown to HTML.
+
+Other kinds of transformations may be done, too, such as decorating HTML.
+
+Extensions (".".prefixed) are the primary means to select transformations to apply. There are also special `pre` and `post` extensions (non "."-prefix) which are applied before and after the extension transformers are called, respectively.
+
+Note: Transformers are *not* applied to asis content.
+
+A configuration could look like:
+
+```
+content:
+  transformers:
+    .md:
+      - function: rudiweb.transformers.markdown2html.main
+        args: []
+        kwargs: {}
+      ...
+    pre: []
+    post:
+      - function: rudiweb.transformers.cleanup.main
+```
+
+A transformer is applied to content *after* it is loaded in the normal fashion. Which means that static and dynamic (see [RudiFile](#rudifile)) content works as before.
+
 ## Configuration
 
 rudiweb uses a YAML file for configuration.
@@ -150,6 +178,10 @@ rudiweb uses a YAML file for configuration.
 | `accounts.<user>.name` | - | - | User account name. Should match `<user>`. |
 | `accounts.<user>.password` | - | - | User account password. |
 | `content.asis.regexps` | - | - | List of regular expressions against which to match url paths for as-is content. |
+| `content.transformers.<ext>` | - | - | List of transformers to call for extension. Extensions are "."-prefixed (e.g., `.gif`). Special cases are `pre` and `post` which are applied before and after the normal extension transformations. |
+| `content.transformers.<ext>.<element>.args` | - | - | List of arguments to pass to the transformer. |
+| `content.transformers.<ext>.<element>.function` | - | - | Absolute function name (`pkgname.modname.fname`) of transformer. |
+| `content.transformers.<ext>.<element>.kwargs` | - | - | Dictionary of keyword arguments to pass to the transformer. |
 | `create-ephemeral-account` | False | - | Create one-time ephemeral account with a generate password. |
 | `debug.enable` | False | - | Enable debugging. |
 | `document-root` | `{site-root}/html` | - | Where content is located. |
