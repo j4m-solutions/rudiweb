@@ -37,6 +37,7 @@ import calendar
 from email.utils import formatdate, parsedate
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+import importlib
 import logging
 import os
 import os.path
@@ -143,8 +144,8 @@ class RudiAccess:
 
     Note: Currently all or nothing access."""
 
-    def __init__(self, config):
-        self.config = config
+    def __init__(self, topconfig):
+        self.config = topconfig
 
     def is_authorized(self, headers, docpath):
         """Check if authorization is required for document."""
@@ -511,7 +512,12 @@ class RudiHandler(BaseHTTPRequestHandler):
         """Response with decorated HTML content."""
         parts = []
 
-        content = server.rudi_transformer.transform(rudif, rudif.load())
+        content = rudif.load()
+        transformers = server.get_transformers(rudif.get_extension())
+        logger.debug(f"transformers ({transformers})")
+        if transformers:
+            for transformer in transformers:
+                content = transformer.run(rudif, content)
 
         # TODO: missing <title> in <head> block!
         parts.append(RudiFile(self, "/.rudi/includes/top.html", dtype="t").load())
@@ -607,23 +613,12 @@ class RudiServer(ThreadingHTTPServer):
         self.rudi_root = config["rudi-root"]
         self.debug = config.get("debug", {}).get("enable", False)
 
-        self.rudi_access = RudiAccess(config)
-        self.rudi_transformer = RudiTransformer(config)
-
-        # content
-
-        ## asis
-        # TODO: move this out of server (but ensure it is computed once?)
-        self.asis_cregexps = [
-            re.compile(x) for x in config.get("content", {}).get("asis", {}).get("regexps", [])
-        ]
-        self.index_files = config.get("index-files", ["index.html"])
-
-        ## extensions
-        EXT_TO_CONTENTTYPE.update(config.get("content", {}).get("extensions", {}))
-
-        ## transformers
-        DECORATABLE_EXTENSIONS.extend(self.rudi_transformer.get_extensions())
+        # setup
+        self.setup_access()
+        self.setup_asis()
+        self.setup_index_files()
+        self.setup_extensions()
+        self.setup_transformers()
 
         # init superclass
         logger.debug(f"{self.site_root=} {self.document_root=} {self.rudi_root}")
@@ -631,8 +626,26 @@ class RudiServer(ThreadingHTTPServer):
         logger.debug(f"{config=}")
         super().__init__((config["host"], config["port"]), *args, **kwargs)
 
-        if config.get("ssl", {}).get("enable", False) == True:
-            self.setup_ssl()
+        self.setup_ssl()
+
+    def get_transformers(self, ext, extonly=False):
+        """Return transformers according to ext. By default, also
+        include those registered for "pre" and "post".
+        """
+        # get a *copy* so it can be updated below!
+        transformers = self.ext2transformers.get(ext, [])[:]
+        if not extonly:
+            pre = self.ext2transformers.get("pre")
+            post = self.ext2transformers.get("post")
+            if pre:
+                transformers = pre + transformers
+            if post:
+                transformers.extend(post)
+
+        return transformers
+
+    def get_transformer_extensions(self):
+        return list(self.ext2transformers.keys())
 
     def match_asis_document(self, docpath):
         """Return match for asis settings."""
@@ -665,10 +678,32 @@ class RudiServer(ThreadingHTTPServer):
             return f"{self.site_root}/{sitepath}"
         return None
 
+    def setup_access(self):
+        self.rudi_access = RudiAccess(self.config)
+
+    def setup_asis(self):
+        # TODO: move this out of server (but ensure it is computed once?)
+        self.asis_cregexps = [
+            re.compile(x)
+            for x in self.config.get("content", {}).get("asis", {}).get("regexps", [])
+        ]
+
+    def setup_extensions(self):
+        EXT_TO_CONTENTTYPE.update(self.config.get("content", {}).get("extensions", {}))
+
+    def setup_index_files(self):
+        self.index_files = self.config.get("index-files", ["index.html"])
+
     def setup_ssl(self):
-        """Set up SSL for server socket."""
-        # TODO: complete implementation
+        """Set up SSL for server socket.
+
+        TODO: Complete implementation.
+        """
         try:
+            if not self.config.get("ssl", {}).get("enable", False):
+                # SECURITY: open communication!
+                return
+
             ssl_keyfile = self.config.get("ssl", {}).get("key-file")
             ssl_certfile = self.config.get("ssl", {}).get("cert-file")
 
@@ -679,6 +714,25 @@ class RudiServer(ThreadingHTTPServer):
                 os.exit(1)
         except Exception as e:
             logger.debug(f"EXCEPTION ({e})")
+            raise
+
+    def setup_transformers(self):
+        """Set up transformers."""
+        try:
+            self.ext2transformers = {}
+
+            config = self.config.get("content", {}).get("transformers", {})
+            for ext, tconfigs in config.items():
+                l = []
+                for tconfig in tconfigs:
+                    absfname = tconfig.get("function")
+                    args = tconfig.get("args", [])
+                    kwargs = tconfig.get("kwargs", {})
+                    l.append(RudiTransformer(absfname, args, kwargs))
+                self.ext2transformers[ext] = l
+
+            DECORATABLE_EXTENSIONS.extend(self.get_transformer_extensions())
+        except Exception as e:
             raise
 
     def upgrade_index_file(self, docpath):
@@ -693,11 +747,40 @@ class RudiServer(ThreadingHTTPServer):
         return docpath
 
 
-def setup_logging(config):
+class RudiTransformer:
+    """Content transformer."""
+
+    def __init__(self, absfname, args, kwargs):
+        try:
+            self.absfname = absfname
+
+            pkgname, modname, fname = absfname.rsplit(".", 2)
+            logger.debug(f"loading pkg ({pkgname}) module ({modname}) function ({fname})")
+
+            mod = importlib.import_module(f".{modname}", pkgname)
+            fn = getattr(mod, fname)
+
+            self.fn = fn
+            self.args = args
+            self.kwargs = kwargs
+        except Exception as e:
+            logger.debug(f"error: {e}")
+
+            # SECURITY: do not continue if transformer is not available
+            raise
+
+    def __repr__(self):
+        return f"<RudiTransformer absfname={self.absfname}>"
+
+    def run(self, rudif, content):
+        return self.fn(rudif, content, *self.args, **self.kwargs)
+
+
+def setup_logging(topconfig):
     """Set up logging."""
     global logger
 
-    loggingconf = config.get("logging")
+    loggingconf = topconfig.get("logging")
     if loggingconf == None or not loggingconf.get("enable", False):
         return
 
@@ -720,52 +803,6 @@ def setup_logging(config):
     if kwargs.get("handlers"):
         logging.basicConfig(**kwargs)
     logger = logging.getLogger(__name__)
-
-
-class RudiTransformer:
-    """Transforms input to HTML."""
-
-    def __init__(self, config):
-        self.config = config
-
-        self.ext2transformer = self.config.get("content", {}).get("transformers", {})
-
-    def get_extensions(self):
-        """Return list of extensions for supported transformers."""
-        return list(self.ext2transformer.keys())
-
-    def transform(self, rudif, content):
-        """Transform raw content according to the extension."""
-        try:
-            transformer = self.ext2transformer.get(rudif.get_extension())
-            if transformer == None:
-                # identity
-                return content
-
-            path = server.resolve_sitepath(transformer.get("file"))
-            args = transformer.get("args", [])
-            if path != None:
-                try:
-                    cp = subprocess.run(
-                        [path] + args,
-                        capture_output=True,
-                        text=False,
-                        env=rudif.get_cgi_variables(),
-                        input=content,
-                    )
-                    if cp.returncode != 0:
-                        # TODO: does this expose too much?
-                        raise Exception(cp.stderr)
-                    return cp.stdout.decode("utf-8")
-                except Exception as e:
-                    if server.debug:
-                        traceback.print_exc()
-                    logger.debug(f"EXCEPTION ({e})")
-
-        except Exception as e:
-            if server.debug:
-                traceback.print_exc()
-            logger.debug(f"EXCEPTION ({e})")
 
 
 def print_usage():
@@ -881,6 +918,9 @@ def main():
 
     # logging
     setup_logging(config)
+
+    # update sys.path
+    sys.path.insert(0, f"""{config["site-root"]}/lib""")
 
     # start server
     server = RudiServer(
