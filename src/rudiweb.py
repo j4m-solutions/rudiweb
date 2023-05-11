@@ -344,7 +344,9 @@ class RudiFile:
     def load(self):
         """Load content. May be from regular file or executed results."""
         try:
-            if self.is_executable():
+            if self.is_dir():
+                return "unavailable"
+            elif self.is_executable():
                 return self._execute()
             else:
                 return self._read()
