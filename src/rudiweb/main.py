@@ -30,7 +30,7 @@ Classes:
 * `RudiTransformer`
 """
 
-__VERSION__ = "0.1"
+__VERSION__ = "0.2"
 
 import base64
 import calendar
@@ -612,7 +612,7 @@ class RudiServer(ThreadingHTTPServer):
     Provide rudi-specific support.
     """
 
-    server_version = "rudiweb/0.1"
+    server_version = f"rudiweb/{__VERSION__}"
 
     def __init__(self, config, *args, **kwargs):
         self.config = config
