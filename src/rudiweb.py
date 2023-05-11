@@ -641,6 +641,14 @@ class RudiServer(ThreadingHTTPServer):
         path = os.path.normpath(f"{basepath}{relpath}")
         return path
 
+    def resolve_sitepath(self, sitepath):
+        """Get real path for the sitepath."""
+        if sitepath != None:
+            if sitepath.startswith("/"):
+                return sitepath
+            return f"{self.site_root}/{sitepath}"
+        return None
+
     def setup_ssl(self):
         """Set up SSL for server socket."""
         # TODO: complete implementation
