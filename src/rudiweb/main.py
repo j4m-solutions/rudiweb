@@ -904,6 +904,12 @@ def main():
         # validate
         if config.get("site-root") == None:
             raise Exception("site-root not set")
+        if not config.get("site-root").startswith("/"):
+            path = os.path.dirname(os.path.abspath(argopts.config_filename))
+            path = f"{path}/{config['site-root']}"
+            config["site-root"] = path
+        if not os.path.isdir(config["site-root"]):
+            raise Exception("site-root does not exist")
         if config.get("document-root") == None:
             config["document-root"] = f"{config['site-root']}/html"
         if config.get("rudi-root") == None:

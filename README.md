@@ -166,7 +166,7 @@ rudiweb uses a YAML file for configuration.
 | `logging.level` | `CRITICAL` | - | Logging level (see Python docs). |
 | `require-authorization` | `False` | - | Require authentication for authorization to access content. |
 | `rudi-root` | `{site-root}/rudi` | - | Where internal content is located. |
-| `site-root` | - | ✅ | Site root where support files are location (e.g., under `bin/`, `html/`, and possibly `rudi/`).  |
+| `site-root` | - | ✅ | Site root where support files are location (e.g., under `bin/`, `html/`, and possibly `rudi/`). A relative path is checked under the same directory as the configuration file.  |
 
 ## Install
 
