@@ -1,6 +1,6 @@
 #! /usr/bin/env python3
 #
-# rudiweb.py
+# rudiweb/main.py
 
 # rudiweb
 #

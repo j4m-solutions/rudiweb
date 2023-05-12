@@ -180,7 +180,7 @@ git clone https://github.com/j4m-solutions/rudiweb.git
 
 If there is an existing rudiweb site configuration file available:
 ```
-~/tmp/rudiweb/src/rudiweb.py <configfile>
+~/tmp/rudiweb/src/rudiweb/main.py <configfile>
 ```
 
 See [demos](https://github.com/j4m-solutions/rudiweb-examples).
