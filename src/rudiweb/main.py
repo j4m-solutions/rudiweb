@@ -522,27 +522,6 @@ class RudiHandler(BaseHTTPRequestHandler):
             for transformer in transformers:
                 content = transformer.run(rudif, content)
 
-        if 0:
-            # DEPRECATED: use transformers
-            # TODO: missing <title> in <head> block!
-            parts.append(RudiFile(self, "/.rudi/includes/top.html", dtype="t").load())
-            parts.append(RudiFile(self, "/.rudi/includes/navbar.html", dtype="t").load())
-            parts.append(content)
-            parts.append(RudiFile(self, "/.rudi/includes/footer.html", dtype="t").load())
-            parts.append(RudiFile(self, "/.rudi/includes/bottom.html", dtype="t").load())
-
-            # clean up
-            if None in parts:
-                logger.debug("found None in respl")
-                parts = filter(None, parts)
-            parts = [b if type(b) == bytes else b.encode("utf-8") for b in parts]
-            payload = b"".join(parts)
-        else:
-            # ensure bytes
-            if type(content) == str:
-                payload = content.encode("utf-8")
-            else:
-                payload = content
 
         self.send_response(200)
         self.send_header("Content-Type", "text/html")
