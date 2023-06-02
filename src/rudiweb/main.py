@@ -543,20 +543,12 @@ class RudiHandler(BaseHTTPRequestHandler):
     def do_default_response(self, rudif):
         """Main method to respond according to name extension.
 
-        HTML is returned with decorations. All other content is
-        returned asis without decoration.
-
-        Decoration is taken from files under `{site_doc}/includes/`:
-        - `top.html` - First content: from `&lt;html>` to `&lt;body>`,
-            including any content for &lt;head>.
-        - `navbar.html` - Navigation bar content using &lt;navbar>.
-        - `footer.html` - Footer content at the bottom of the output.
-        - `bottom.html` - Last content: up to and including
-            `&lt;body>&lt;html>`.
+        HTML is returned with transformers applied. All other content is
+        returned as-is.
 
         If the HTML file has the user execute bit set (like
         `XBitHack`), it is executed in its own process with the output
-        taken as the body. Decorations still apply.
+        taken as the body.
         """
         try:
             docpath = rudif.docpath
