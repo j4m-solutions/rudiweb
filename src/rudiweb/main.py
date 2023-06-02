@@ -51,6 +51,8 @@ import traceback
 from urllib.parse import unquote, urlparse
 import yaml
 
+from lib.htmlwriter import HTML5ElementFactory, HTMLWriter
+
 logger = logging.getLogger(__name__)
 
 CGI_REQUEST_HEADERS = {
@@ -512,6 +514,11 @@ class RudiHandler(BaseHTTPRequestHandler):
         """Response with decorated HTML content."""
         parts = []
 
+        # load initial document
+        hw = HTMLWriter()
+        ef = HTML5ElementFactory()
+        hw.root.add(ef.html(ef.head(), ef.body()))
+
         # load initial content
         content = rudif.load()
 
@@ -519,9 +526,13 @@ class RudiHandler(BaseHTTPRequestHandler):
         transformers = server.get_transformers(rudif.get_extension())
         logger.debug(f"transformers ({transformers})")
         if transformers:
-            for transformer in transformers:
-                content = transformer.run(rudif, content)
+            try:
+                for transformer in transformers:
+                    hw.root = transformer.run(rudif, content, hw.root) or hw.root
+            except Exception as e:
+                raise
 
+        payload = hw.render()
 
         self.send_response(200)
         self.send_header("Content-Type", "text/html")
@@ -762,8 +773,8 @@ class RudiTransformer:
     def __repr__(self):
         return f"<RudiTransformer absfname={self.absfname}>"
 
-    def run(self, rudif, content):
-        return self.fn(rudif, content, *self.args, **self.kwargs)
+    def run(self, rudif, content, root):
+        return self.fn(rudif, content, root, *self.args, **self.kwargs)
 
 
 def setup_logging(topconfig):
