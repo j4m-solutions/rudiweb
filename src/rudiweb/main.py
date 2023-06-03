@@ -413,6 +413,7 @@ class RudiHandler(BaseHTTPRequestHandler):
         if not rudif.docpath.endswith("/") and rudif.is_dir():
             # force use of trailing "/"
             self.do_301_response(rudif, f"{rudif.docpath}/")
+            return
 
         # check that document/file exists
         if not rudif.exists():
