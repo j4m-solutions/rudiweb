@@ -378,9 +378,8 @@ class RudiHandler(BaseHTTPRequestHandler):
         self.do_ALL()
 
     def do_HEAD(self):
-        if 0:
-            # TODO: drop body
-            self.do_ALL()
+        # not sending payload handled elsewhere (`write_payload()`)
+        self.do_ALL()
 
     def do_POST(self):
         if 0:
@@ -486,7 +485,8 @@ class RudiHandler(BaseHTTPRequestHandler):
                     self.send_header("Cache-Control", "max-age=120")
                     self.send_header("Last-Modified", last_modified)
                 self.end_headers()
-                self.write(payload)
+
+                self.write_payload(payload)
         except Exception as e:
             if server.debug:
                 traceback.print_exc()
@@ -508,7 +508,8 @@ class RudiHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "text/html")
         self.send_header("Content-Length", str(len(payload)))
         self.end_headers()
-        self.write(payload)
+
+        self.write_payload(payload)
 
     def do_decorated_response(self, rudif):
         """Response with decorated HTML content."""
@@ -538,7 +539,8 @@ class RudiHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "text/html")
         self.send_header("Content-Length", str(len(payload)))
         self.end_headers()
-        self.write(payload)
+
+        self.write_payload(payload)
 
     def do_default_response(self, rudif):
         """Main method to respond according to name extension.
@@ -586,6 +588,11 @@ class RudiHandler(BaseHTTPRequestHandler):
             if server.debug:
                 traceback.print_exc()
             logger.debug(f"EXCEPTION ({e})")
+
+    def write_payload(self, payload):
+        """Write payload to stream."""
+        if self.command in ["GET"]:
+            self.write(payload)
 
 
 class RudiServer(ThreadingHTTPServer):
