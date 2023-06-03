@@ -414,6 +414,11 @@ class RudiHandler(BaseHTTPRequestHandler):
             # force use of trailing "/"
             self.do_301_response(rudif, f"{rudif.docpath}/")
 
+        # check that document/file exists
+        if not rudif.exists():
+            self.do_404_response(rudif)
+            return
+
         # generate response
         if server.match_asis_document(rudif.docpath):
             self.do_asis_response(rudif)
@@ -553,16 +558,9 @@ class RudiHandler(BaseHTTPRequestHandler):
         taken as the body.
         """
         try:
-            docpath = rudif.docpath
+            logger.debug(f"do_default_response ({rudif.docpath=})")
 
-            logger.debug(f"do_default_response ({docpath=})")
-
-            _, ext = os.path.splitext(docpath)
-            path = server.resolve_docpath(docpath=docpath)
-            if not os.path.exists(path):
-                self.do_404_response(docpath)
-                return
-
+            ext = rudif.get_extension()
             if ext in DECORATABLE_EXTENSIONS:
                 self.do_decorated_response(rudif)
             elif ext in ASIS_EXTENSIONS:
