@@ -27,6 +27,7 @@ Classes:
 * `RudiFile`
 * `RudiHandler`
 * `RudiServer`
+* `RudiSpace`
 * `RudiTransformer`
 """
 
@@ -68,6 +69,8 @@ CGI_REQUEST_HEADERS = {
     "Range": "HTTP_RANGE",
     "User-Agent": "HTTP_USER_AGENT",
 }
+
+DEFAULT_SPACE_TYPE = "asis"
 
 EXT_TO_CONTENTTYPE = {
     ".aac": "audio/aac",
@@ -190,6 +193,17 @@ class RudiConfig(dict):
                 "password": passwd,
             }
             return (user, passwd)
+
+
+class RudiContext:
+    """Content for processing."""
+
+    def __init__(self, docpath, server, handler, rudis, rudif):
+        self.docpath = docpath
+        self.server = server
+        self.handler = handler
+        self.rudis = rudis
+        self.rudif = rudif
 
 
 class RudiFile:
@@ -396,37 +410,46 @@ class RudiHandler(BaseHTTPRequestHandler):
         if parsed.path.endswith("/") and parsed.path != "/":
             docpath = f"{docpath}/"
 
+        # setup `RudiSpace`, `RudiFile`
+        rudis = self.server.get_space(docpath)
+        rudif = RudiFile(self, docpath)
+
+        # setup `RudiContext`
+        rudic = RudiContext(docpath, self.server, self, rudis, rudif)
+
+        # no space found
+        if rudis == None:
+            self.do_404_response(rudic)
+            return
+
         # SECURITY: deny access to "/.rudi/"
         if docpath.startswith("/.rudi/"):
-            self.do_404_response(None)
+            self.do_404_response(rudic)
             return
 
         # SECURITY: check access
         if server.rudi_access.is_authorized(self.headers, docpath) == False:
-            self.do_401_response(None)
+            self.do_401_response(rudic)
             return
-
-        # set up `RudiFile` (work with rudif here and below)
-        rudif = RudiFile(self, docpath)
 
         # redirect if dir and docpath without trailing "/"
         if not rudif.docpath.endswith("/") and rudif.is_dir():
             # force use of trailing "/"
-            self.do_301_response(rudif, f"{rudif.docpath}/")
+            self.do_301_response(rudic, f"{rudif.docpath}/")
             return
 
         # check that document/file exists
         if not rudif.exists():
-            self.do_404_response(rudif)
+            self.do_404_response(rudic)
             return
 
         # generate response
-        if server.match_asis_document(rudif.docpath):
-            self.do_asis_response(rudif)
+        if rudis.type == "asis":
+            self.do_asis_response(rudic)
         else:
-            self.do_default_response(rudif)
+            self.do_default_response(rudic)
 
-    def do_301_response(self, rudif, location):
+    def do_301_response(self, rudic, location):
         """301 Redirect response.
 
         Redirect to a new location."""
@@ -437,7 +460,7 @@ class RudiHandler(BaseHTTPRequestHandler):
         self.send_header("Location", location)
         self.end_headers()
 
-    def do_304_response(self, rudif):
+    def do_304_response(self, rudic):
         """304 Not Modified response.
 
         Headers with *no* body."""
@@ -447,7 +470,7 @@ class RudiHandler(BaseHTTPRequestHandler):
         self.send_response(status)
         self.end_headers()
 
-    def do_401_response(self, rudif):
+    def do_401_response(self, rudic):
         """401 Unauthorized response.
 
         Require authentication info in request."""
@@ -458,7 +481,7 @@ class RudiHandler(BaseHTTPRequestHandler):
         self.send_header("WWW-Authenticate", 'Basic realm="site"')
         self.end_headers()
 
-    def do_404_response(self, rudif):
+    def do_404_response(self, rudic):
         """404 Not Found response."""
         status = HTTPStatus.NOT_FOUND
         logger.debug(f"""{status.value} {status.phrase}""")
@@ -466,7 +489,7 @@ class RudiHandler(BaseHTTPRequestHandler):
         self.send_response(status)
         self.end_headers()
 
-    def do_asis_response(self, rudif):
+    def do_asis_response(self, rudic):
         """Respond with content as-is (unchanged), without decoration.
 
         This is suitable for as-is content.
@@ -474,19 +497,46 @@ class RudiHandler(BaseHTTPRequestHandler):
         Note: All purely static content is subject to caching."""
 
         try:
-            logger.debug(f"do_asis_response ({rudif.docpath=})")
+            logger.debug(f"do_asis_response ({rudic.docpath=})")
 
             modified_since = self.headers.get("If-Modified-Since")
-            if modified_since != None and not rudif.is_newer(modified_since):
-                self.do_304_response(rudif)
+            if modified_since != None and not rudic.rudif.is_newer(modified_since):
+                self.do_304_response(rudic)
             else:
-                payload = rudif.load()
+                # load initial content
+                content = rudic.rudif.load()
+
+                # apply transformers
+                transformers = rudic.rudis.get_transformers(rudic.rudif.get_extension())
+                logger.debug(f"transformers ({transformers})")
+                if transformers:
+                    # load initial document
+                    hw = HTMLWriter()
+                    ef = HTML5ElementFactory()
+                    hw.root.add(ef.html(ef.head(), ef.body()))
+
+                    try:
+                        for transformer in transformers:
+                            hw.root = transformer.run(rudic, content, hw.root) or hw.root
+                    except Exception as e:
+                        print("====================================")
+                        import traceback
+
+                        traceback.print_exc()
+                        raise
+
+                    if hw.root:
+                        payload = hw.render()
+                    else:
+                        payload = content
+                else:
+                    payload = content
 
                 self.send_response(200)
-                self.send_header("Content-Type", rudif.get_content_type())
+                self.send_header("Content-Type", rudic.rudif.get_content_type())
                 self.send_header("Content-Length", str(len(payload)))
 
-                last_modified = rudif.get_http_date()
+                last_modified = rudic.rudif.get_http_date()
                 if last_modified:
                     self.send_header("Cache-Control", "max-age=120")
                     self.send_header("Last-Modified", last_modified)
@@ -498,7 +548,7 @@ class RudiHandler(BaseHTTPRequestHandler):
                 traceback.print_exc()
             logger.debug(f"EXCEPTION ({e})")
 
-    def do_debug_response(self, rudif):
+    def do_debug_response(self, rudic):
         """Test response for debugging."""
         parts = [
             "<pre>\n",
@@ -517,7 +567,7 @@ class RudiHandler(BaseHTTPRequestHandler):
 
         self.write_payload(payload)
 
-    def do_decorated_response(self, rudif):
+    def do_decorated_response(self, rudic):
         """Response with decorated HTML content."""
         parts = []
 
@@ -527,15 +577,15 @@ class RudiHandler(BaseHTTPRequestHandler):
         hw.root.add(ef.html(ef.head(), ef.body()))
 
         # load initial content
-        content = rudif.load()
+        content = rudic.rudif.load()
 
         # apply transformers
-        transformers = server.get_transformers(rudif.get_extension())
+        transformers = rudic.rudis.get_transformers(rudic.rudif.get_extension())
         logger.debug(f"transformers ({transformers})")
         if transformers:
             try:
                 for transformer in transformers:
-                    hw.root = transformer.run(rudif, content, hw.root) or hw.root
+                    hw.root = transformer.run(rudic, content, hw.root) or hw.root
             except Exception as e:
                 raise
 
@@ -548,7 +598,7 @@ class RudiHandler(BaseHTTPRequestHandler):
 
         self.write_payload(payload)
 
-    def do_default_response(self, rudif):
+    def do_default_response(self, rudic):
         """Main method to respond according to name extension.
 
         HTML is returned with transformers applied. All other content is
@@ -559,13 +609,13 @@ class RudiHandler(BaseHTTPRequestHandler):
         taken as the body.
         """
         try:
-            logger.debug(f"do_default_response ({rudif.docpath=})")
+            logger.debug(f"do_default_response ({rudic.docpath=})")
 
-            ext = rudif.get_extension()
+            ext = rudic.rudif.get_extension()
             if ext in DECORATABLE_EXTENSIONS:
-                self.do_decorated_response(rudif)
+                self.do_decorated_response(rudic)
             elif ext in ASIS_EXTENSIONS:
-                self.do_asis_response(rudif)
+                self.do_asis_response(rudic)
         except Exception as e:
             if server.debug:
                 traceback.print_exc()
@@ -614,10 +664,10 @@ class RudiServer(ThreadingHTTPServer):
 
         # setup
         self.setup_access()
-        self.setup_asis()
+        # self.setup_asis()
         self.setup_index_files()
-        self.setup_extensions()
-        self.setup_transformers()
+        self.setup_space_order()
+        self.setup_spaces()
 
         # init superclass
         logger.debug(f"{self.site_root=} {self.document_root=} {self.rudi_root}")
@@ -627,24 +677,12 @@ class RudiServer(ThreadingHTTPServer):
 
         self.setup_ssl()
 
-    def get_transformers(self, ext, extonly=False):
-        """Return transformers according to ext. By default, also
-        include those registered for "pre" and "post".
-        """
-        # get a *copy* so it can be updated below!
-        transformers = self.ext2transformers.get(ext, [])[:]
-        if not extonly:
-            pre = self.ext2transformers.get("pre")
-            post = self.ext2transformers.get("post")
-            if pre:
-                transformers = pre + transformers
-            if post:
-                transformers.extend(post)
-
-        return transformers
-
-    def get_transformer_extensions(self):
-        return list(self.ext2transformers.keys())
+    def get_space(self, docpath):
+        """Return match of space for docpath."""
+        for spacename in self.spaceorder:
+            rudis = self.spaces.get(spacename)
+            if rudis.is_match(docpath):
+                return rudis
 
     def match_asis_document(self, docpath):
         """Return match for asis settings."""
@@ -687,11 +725,16 @@ class RudiServer(ThreadingHTTPServer):
             for x in self.config.get("content", {}).get("asis", {}).get("regexps", [])
         ]
 
-    def setup_extensions(self):
-        EXT_TO_CONTENTTYPE.update(self.config.get("content", {}).get("extensions", {}))
-
     def setup_index_files(self):
         self.index_files = self.config.get("index-files", ["index.html"])
+
+    def setup_space_order(self):
+        self.spaceorder = self.config.get("space-order", [])
+
+    def setup_spaces(self):
+        self.spaces = {}
+        for spacename, spaceconfig in self.config.get("spaces").items():
+            self.spaces[spacename] = RudiSpace(spaceconfig)
 
     def setup_ssl(self):
         """Set up SSL for server socket.
@@ -715,12 +758,72 @@ class RudiServer(ThreadingHTTPServer):
             logger.debug(f"EXCEPTION ({e})")
             raise
 
+    def upgrade_index_file(self, docpath):
+        # return upgrade to index file, if appropriate
+        if docpath.endswith("/"):
+            for index_file in self.index_files:
+                _docpath = f"{docpath}{index_file}"
+                path = server.resolve_docpath(_docpath)
+                if os.path.exists(path):
+                    docpath = _docpath
+                    break
+        return docpath
+
+
+class RudiSpace:
+    """Content space."""
+
+    def __init__(self, config):
+        self.config = config
+        self.type = config.get("type", DEFAULT_SPACE_TYPE)
+
+        self.cregexps = []
+        self.ext2transformers = {}
+        self.transformers = {}
+
+        self.setup_regexps()
+        self.setup_extensions()
+        self.setup_transformers()
+
+    def get_transformers(self, ext, extonly=False):
+        """Return transformers according to ext. By default, also
+        include those registered for "pre" and "post".
+        """
+        # get a *copy* so it can be updated below!
+        transformers = self.ext2transformers.get(ext, [])[:]
+        if not extonly:
+            pre = self.ext2transformers.get("pre")
+            post = self.ext2transformers.get("post")
+            if pre:
+                transformers = pre + transformers
+            if post:
+                transformers.extend(post)
+
+        return transformers
+
+    def get_transformer_extensions(self):
+        return list(self.ext2transformers.keys())
+
+    def is_match(self, docpath):
+        for cregexp in self.cregexps:
+            m = cregexp.match(docpath)
+            if m:
+                return m
+
+    def setup_extensions(self):
+        # TODO: extensions by space?
+        EXT_TO_CONTENTTYPE.update(self.config.get("extensions", {}))
+
+    def setup_regexps(self):
+        for regexp in self.config.get("regexps", []):
+            self.cregexps.append(re.compile(regexp))
+
     def setup_transformers(self):
         """Set up transformers."""
         try:
             self.ext2transformers = {}
 
-            config = self.config.get("content", {}).get("transformers", {})
+            config = self.config.get("transformers", {})
             for ext, tconfigs in config.items():
                 l = []
                 for tconfig in tconfigs:
@@ -733,17 +836,6 @@ class RudiServer(ThreadingHTTPServer):
             DECORATABLE_EXTENSIONS.extend(self.get_transformer_extensions())
         except Exception as e:
             raise
-
-    def upgrade_index_file(self, docpath):
-        # return upgrade to index file, if appropriate
-        if docpath.endswith("/"):
-            for index_file in self.index_files:
-                _docpath = f"{docpath}{index_file}"
-                path = server.resolve_docpath(_docpath)
-                if os.path.exists(path):
-                    docpath = _docpath
-                    break
-        return docpath
 
 
 class RudiTransformer:
@@ -771,8 +863,8 @@ class RudiTransformer:
     def __repr__(self):
         return f"<RudiTransformer absfname={self.absfname}>"
 
-    def run(self, rudif, content, root):
-        return self.fn(rudif, content, root, *self.args, **self.kwargs)
+    def run(self, rudic, content, root):
+        return self.fn(rudic, content, root, *self.args, **self.kwargs)
 
 
 def setup_logging(topconfig):
