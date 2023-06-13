@@ -5,15 +5,11 @@
 """Transform raw html to HTMLWriter tree.
 """
 
-from lib.htmlwriter import HTML5ElementFactory, HTMLParser
-
-ef = HTML5ElementFactory()
+from lib.htmlwriter import Element, HTMLParser
 
 
-def main(rudif, content, root, *args, **kwargs):
+def main(rudic, content, root, *args, **kwargs):
     try:
-        head, body = root.get_headbody()
-
         if type(content) == bytes:
             content = content.decode("utf-8")
 
@@ -21,8 +17,13 @@ def main(rudif, content, root, *args, **kwargs):
         hp = HTMLParser()
         hp.feed(content)
 
-        body.addl(hp.get_root().children)
-
-        return root
+        newroot = hp.get_root()
+        if newroot.find1(Element("html")):
+            # full document; use newroot instead
+            return newroot
+        else:
+            body = root.find1(Element("body"))
+            body.add(*hp.get_root().children)
+            return root
     except Exception as e:
         raise Exception(f"error: {e}")

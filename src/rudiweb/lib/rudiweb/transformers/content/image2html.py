@@ -7,7 +7,7 @@
 
 import base64
 
-from lib.htmlwriter import HTML5ElementFactory
+from lib.htmlwriter import Element, HTML5ElementFactory
 
 
 ef = HTML5ElementFactory()
@@ -40,15 +40,14 @@ IMGTYPE2FN = {
 }
 
 
-def main(rudif, content, root, *args, **kwargs):
+def main(rudic, content, root, *args, **kwargs):
     """Transformer main.
 
     Keyword Args:
         imgtype (str): Image type (e.g., "png").
     """
     try:
-        head, body = root.get_headbody()
-
+        body = root.find1(Element("body"))
         body.add(ef.h1("Image"))
 
         imgtype = kwargs.get("imgtype")

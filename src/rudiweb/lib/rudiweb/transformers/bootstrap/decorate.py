@@ -11,7 +11,7 @@
 
 import logging
 
-from lib.htmlwriter import HTML5ElementFactory, Text
+from lib.htmlwriter import Element, HTML5ElementFactory, Text
 
 
 BRAND_LOGO_HREF = "/asis/img/brand-logo.png"
@@ -97,7 +97,7 @@ BOTTOM = [
 ]
 
 
-def main(rudif, content, root, *args, **kwargs):
+def main(rudic, content, root, *args, **kwargs):
     """Transformer main.
 
     Keyword Args:
@@ -156,7 +156,7 @@ def main(rudif, content, root, *args, **kwargs):
         # TODO: prepend?
         head.addl(HEAD)
         try:
-            parent, base = rudif.nameroot.rsplit("/", 1)
+            parent, base = rudic.rudif.nameroot.rsplit("/", 1)
             head.add(ef.title(f"{base} ({parent})"))
         except:
             pass

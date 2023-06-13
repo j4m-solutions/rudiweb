@@ -7,7 +7,7 @@
 
 import markdown
 
-from lib.htmlwriter import HTML5ElementFactory, HTMLParser
+from lib.htmlwriter import Element, HTML5ElementFactory, HTMLParser
 
 
 MARKDOWN_EXTENSIONS = [
@@ -24,15 +24,13 @@ ef = HTML5ElementFactory()
 # TODO: instantiate markdown with extensions to speed up
 
 
-def main(rudif, content, root, *args, **kwargs):
+def main(rudic, content, root, *args, **kwargs):
     """Transformer main.
 
     Keyword Args:
         extensions (list): Markdown extensions by name.
     """
     try:
-        head, body = root.get_headbody()
-
         if type(content) == bytes:
             content = content.decode("utf-8")
 
@@ -42,6 +40,7 @@ def main(rudif, content, root, *args, **kwargs):
         hp = HTMLParser()
         hp.feed(markdown.markdown(content, extensions=extensions, output_format="html"))
 
+        body = root.find1(Element("body"))
         body.addl(hp.get_root().children)
 
         return root

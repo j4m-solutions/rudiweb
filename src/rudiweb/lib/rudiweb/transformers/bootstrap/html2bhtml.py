@@ -12,17 +12,17 @@ Simply wrap HTML as appropriate for bootstrap:
     </section>
 """
 
-from lib.htmlwriter import HTML5ElementFactory
+from lib.htmlwriter import Element, HTML5ElementFactory
 
 ef = HTML5ElementFactory()
 
 
-def main(rudif, content, root, *args, **kwargs):
+def main(rudic, content, root, *args, **kwargs):
     try:
-        head, body = root.get_headbody()
-
         passthroughs = kwargs.get("passthroughs", [".bhtml"])
-        if rudif.get_extension() not in passthroughs:
+
+        if rudic.rudif.get_extension() not in passthroughs:
+            body = root.find1(Element("body"))
             children = body.children
             body.children = []
             body.add(ef.section(ef.div(_class="container").addl(children)))

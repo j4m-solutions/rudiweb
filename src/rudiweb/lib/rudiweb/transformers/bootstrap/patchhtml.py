@@ -26,11 +26,11 @@ ADMONITION2ATTRS = {
 ef = HTML5ElementFactory()
 
 
-def main(rudif, content, root, *args, **kwargs):
+def main(rudic, content, root, *args, **kwargs):
     try:
         passthroughs = kwargs.get("passthroughs", [".bhtml"])
-        if rudif.get_extension() not in passthroughs:
-            head, body = root.get_headbody()
+        if rudic.rudif.get_extension() not in passthroughs:
+            body = root.find1(Element("body"))
 
             def patch(o):
                 if type(o) != Element:

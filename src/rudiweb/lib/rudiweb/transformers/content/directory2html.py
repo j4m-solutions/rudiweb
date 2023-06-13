@@ -9,22 +9,22 @@ import os
 import os.path
 from pathlib import Path
 
-from lib.htmlwriter import HTML5ElementFactory
+from lib.htmlwriter import Element, HTML5ElementFactory
 
 
 ef = HTML5ElementFactory()
 
 
-def main(rudif, content, root, *args, **kwargs):
+def main(rudic, content, root, *args, **kwargs):
     try:
-        head, body = root.get_headbody()
+        body = root.find1(Element("body"))
 
-        server = rudif.handler.server
-        transpath = server.resolve_docpath(rudif.docpath)
-        docdirname = rudif.docpath
+        server = rudic.server
+        transpath = server.resolve_docpath(rudic.docpath)
+        docdirname = rudic.docpath
         if not os.path.isdir(transpath):
             transpath = os.path.dirname(transpath)
-            docdirname = os.path.dirname(rudif.docpath)
+            docdirname = os.path.dirname(rudic.docpath)
 
         table = ef.table(
             ef.thead(
@@ -37,7 +37,10 @@ def main(rudif, content, root, *args, **kwargs):
             tbody := ef.tbody(),
         )
 
-        for name in os.listdir(transpath):
+        names = os.listdir(transpath)
+        names.sort()
+
+        for name in names:
             # hide index files
             if name in server.index_files:
                 continue

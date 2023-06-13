@@ -5,19 +5,18 @@
 """Transform plain text to HTML.
 """
 
-from lib.htmlwriter import HTML5ElementFactory
+from lib.htmlwriter import Element, HTML5ElementFactory
 
 
 ef = HTML5ElementFactory()
 
 
-def main(rudif, content, root, *args, **kwargs):
+def main(rudic, content, root, *args, **kwargs):
     try:
-        head, body = root.get_headbody()
-
         if type(content) == bytes:
             content = content.decode("utf-8")
 
+        body = root.find1(Element("body"))
         body.add(ef.pre(content.replace("<", "&lt;")))
 
         return root
