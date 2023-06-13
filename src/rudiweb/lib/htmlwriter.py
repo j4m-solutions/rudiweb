@@ -202,23 +202,22 @@ class Attr:
             values (list): List of strings.
         """
         self.name = name
-        self.values = values or []
+        self.values = set()
+        if values:
+            self.update(values)
 
-    def append(self, v):
+    def add(self, v):
         """Add a value."""
-        self.values.append(v)
+        if v != None:
+            self.values.add(v)
 
     def clear(self):
         """Clear current values."""
-        self.values = []
+        self.values.clear()
 
     def get(self):
         """Get values."""
-        return self.values[:]
-
-    def extend(self, values):
-        """Extend with values."""
-        self.values.extend(values)
+        return self.values
 
     def render(self, extra=None):
         """Render safe attribute (name and value) string.
@@ -226,14 +225,19 @@ class Attr:
         Args:
             extra (Attr): Extra attr with values to apply.
         """
-        values = self.values[:]
+        values = self.values.copy()
         if extra:
-            values.extend(extra.values)
-        return '%s="%s"' % (self.name, " ".join([escape(v) for v in values]))
+            values.update(extra.values)
+        values = list(filter(None, values))
+        if values:
+            return '%s="%s"' % (self.name, " ".join([escape(v) for v in values]))
+        else:
+            return self.name
 
     def set(self, values):
         """Set attribute values."""
-        self.values = values[:]
+        self.values.clear()
+        self.values.update(values)
 
     def tree(self, writer, parent):
         d = {
@@ -243,6 +247,10 @@ class Attr:
             "values": self.values,
         }
         return d
+
+    def update(self, values):
+        """Update with values."""
+        self.values.update(filter(None, values))
 
 
 class Defaults:
@@ -262,7 +270,7 @@ class Defaults:
         for k, values in kwargs.items():
             k = k.lstrip("_")
             attr = attrs.setdefault(k, Attr(k))
-            attr.extend(values)
+            attr.update(values)
 
     def clear_attrs(self, tag):
         """Clear attributes for tag."""
@@ -324,11 +332,102 @@ class Defaults:
         }
 
 
-class Comment:
+class Node:
+    """Base node, no children."""
+
+    def _match(self, o):
+        """Return self if a match with object.
+
+        Args:
+            o: Object.
+
+        Returns:
+            Self/this object.
+        """
+        return self
+
+    def match(self, o):
+        """Top-level/initial match test of class. Calls ldwer level
+        match if needed.
+
+        Args:
+            o: Object.
+
+        Returns:
+            Self/this object.
+        """
+        if type(o) == self.__class__:
+            return self._match(o)
+
+
+class ParentNode(Node):
+    """Node with children."""
+
+    def add(self, *children) -> "Element":
+        """Add child elements.
+
+        Args:
+            children (list): List of `str`, `Text`, or `Element`
+                values.
+
+        Returns:
+            Self.
+        """
+        # TODO: validate object type of children
+        for child in children:
+            if isinstance(child, str):
+                child = Text(child)
+            self.children.append(child)
+        return self
+
+    def find(self, o):
+        for oo in self.walk():
+            if oo.match(o):
+                yield oo
+
+    def find1(self, o):
+        for oo in self.find(o):
+            return oo
+
+    def insert(self, idx, *children) -> "Element":
+        """Insert child elements at position `idx`.
+
+        Args:
+            idx: Position in children list.
+
+        Returns:
+            Self.
+        """
+        # TODO: improve efficiency
+        for child in reversed(children):
+            if isinstance(child, str):
+                child = Text(child)
+            self.children.insert(idx, child)
+        return self
+
+    def walk(self):
+        """Walk the tree and return each object."""
+        for child in self.children:
+            yield child
+            if type(child) == Element:
+                yield from child.walk()
+
+    def walk_callback(self, callback):
+        """Walk tree and call callback for each object."""
+        for child in self.walk():
+            callback(child)
+
+
+class Comment(Node):
     """HTML comment."""
 
     def __init__(self, s):
+        super().__init__()
         self.s = s
+
+    def _match(self, o):
+        if o.s == self.s:
+            return self
 
     def render(self, writer, parent):
         return f"<!-- {escape(self.s)} -->"
@@ -345,7 +444,7 @@ class Comment:
         return d
 
 
-class Element:
+class Element(ParentNode):
     """HTML element."""
 
     def __init__(self, tag, *children, **kwargs):
@@ -358,59 +457,34 @@ class Element:
         Keyword Args:
             defaults (Defaults): Additional (on top of those from
                 `HTMLWriter`) defaults for rendering.
-            <name>_ (list): List of attribute values for attribute
-                `<name>` (trailing _ is stripped).
+            _<name> (list): List of attribute values for attribute
+                `<name>` (leading _ is stripped).
         """
-        self.tag = tag
-        self.children = []
-        if children:
-            self.addl(children)
+        super().__init__()
         self.attrs = {}
-        if kwargs:
-            self.defaults = kwargs.get("defaults")
-            self.add_attrs(**kwargs)
-        else:
-            self.defaults = None
+        self.children = []
+        self.defaults = None
+
+        self.tag = tag
+        self.add(*children)
+        self.defaults = kwargs.pop("default", None)
+        self.add_attrs(**kwargs)
 
     def __repr__(self):
         return f"""<Element tag="{self.tag}" nattrs="{len(self.attrs)}" at {hex(id(self))})>"""
 
-    def add(self, *children) -> "Element":
-        """Add child elements.
-
-        Args:
-            children (list): List of `str`, `Text`, or `Element`
-                values.
-
-        Returns:
-            Self.
-        """
-        return self.addl(children)
-
-    def addl(self, children) -> "Element":
-        """Add list of child elements.
-
-        Args:
-            children (list): List of `str`, `Text`, or `Element`
-                values.
-
-        Returns:
-            Self.
-        """
-        # TODO: validate object type of children
-        for child in children:
-            if isinstance(child, str):
-                child = Text(child)
-            self.children.append(child)
-        return self
+    def _match(self, o):
+        if o.tag == self.tag:
+            # TODO: check attrs
+            return self
 
     def add_attr(self, name, value):
         attr = self.attrs.get(name)
         if not attr:
             attr = self.attrs[name] = Attr(name)
-        if type(value) == str:
+        if type(value) not in [list, tuple]:
             value = [value]
-        attr.extend(value)
+        attr.update(value)
 
     def add_attrs(self, *kvs, **kwargs):
         """Add attribute values.
@@ -427,9 +501,10 @@ class Element:
             attr = self.attrs.get(k)
             if not attr:
                 attr = self.attrs[k] = Attr(k)
-            if type(v) == str:
-                v = [v]
-            attr.extend(v)
+            if v not in [None, True]:
+                if type(v) == str:
+                    v = [v]
+                attr.update(v)
 
         for k, v in kvs:
             _add(k, v)
@@ -439,6 +514,9 @@ class Element:
             _add(k, v)
 
         return self
+
+    def get_attrs(self):
+        return self.attrs
 
     def is_void(self):
         """Return True if this is a void element."""
@@ -492,8 +570,8 @@ class Element:
                 nl,
             )
 
-    def set_attr(self, name, value):
-        self.attrs[name] = Attr(name, [value])
+    def set_attrs(self, name, values):
+        self.attrs[name] = Attr(name, values)
 
     def tree(self, writer, parent):
         """Return tree of element (and children) with attributes.
@@ -519,24 +597,17 @@ class Element:
         }
         return d
 
-    def walk(self):
-        """Walk the tree and return each object."""
-        for child in self.children:
-            yield child
-            if type(child) == Element:
-                yield from child.walk()
 
-    def walk_callback(self, callback):
-        """Walk tree and call callback for each object."""
-        for o in self.walk():
-            callback(o)
-
-
-class Raw:
+class Raw(Node):
     """Raw markup."""
 
     def __init__(self, s):
+        super().__init__()
         self.s = s
+
+    def _match(self, o):
+        if o.s == self.s:
+            return self
 
     def render(self, writer, parent):
         return self.s
@@ -553,27 +624,13 @@ class Raw:
         return d
 
 
-class Root:
+class Root(ParentNode):
     def __init__(self, *children):
         """Root."""
+        super().__init__()
         self.children = []
-        self.addl(children)
 
-    def add(self, *children):
-        self.addl(children)
-
-    def addl(self, children):
-        for child in children:
-            if isinstance(child, str):
-                child = Text(child)
-            self.children.append(child)
-        return self
-
-    def get_headbody(self):
-        try:
-            return self.children[0].children[0:2]
-        except:
-            raise
+        self.add(*children)
 
     def render(self, writer, parent):
         childrenl = []
@@ -590,15 +647,20 @@ class Root:
         return d
 
 
-class Text:
+class Text(Node):
     """Text."""
 
     def __init__(self, s):
+        super().__init__()
         self.s = s
+
+    def _match(self, o):
+        if o.s == self.s:
+            return self
 
     def render(self, writer, parent):
         """Render safely."""
-        return escape(self.s)
+        return escape(self.s, quote=False)
 
     def set(self, s):
         self.s = s
@@ -722,7 +784,7 @@ class HTMLParser(_HTMLParser):
             k, v = attr
             if k == "class":
                 v = v.split()
-            el.add_attr(k, unescape(v))
+            el.add_attrs((k, unescape(v) if v != None else None))
         self.last.add(el)
         if not is_void(tag):
             self.stack.append(el)
