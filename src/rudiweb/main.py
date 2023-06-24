@@ -90,6 +90,8 @@ EXT_TO_CONTENTTYPE = {
     ".jpg": "image/jpeg",
     ".js": "text/javascript",
     ".json": "application/json",
+    ".m4a": "audio/mp4",
+    ".m4v": "video/mp4",
     ".mp3": "audio/mpeg",
     ".mp4": "video/mp4",
     ".mpeg": "video/mpeg",
