@@ -506,31 +506,35 @@ class RudiHandler(BaseHTTPRequestHandler):
                 # load initial content
                 content = rudic.rudif.load()
 
-                # apply transformers
-                transformers = rudic.rudis.get_transformers(rudic.rudif.get_extension())
-                logger.debug(f"transformers ({transformers})")
-                if transformers:
-                    # load initial document
-                    hw = HTMLWriter()
-                    ef = HTML5ElementFactory()
-                    hw.root.add(ef.html(ef.head(), ef.body()))
+                # TODO: avoid redundant checked if called from do_default_response()
+                if rudic.rudif.get_extension() in ASIS_EXTENSIONS:
+                    payload = content
+                else:
+                    # apply transformers
+                    transformers = rudic.rudis.get_transformers(rudic.rudif.get_extension())
+                    logger.debug(f"transformers ({transformers})")
+                    if transformers:
+                        # load initial document
+                        hw = HTMLWriter()
+                        ef = HTML5ElementFactory()
+                        hw.root.add(ef.html(ef.head(), ef.body()))
 
-                    try:
-                        for transformer in transformers:
-                            hw.root = transformer.run(rudic, content, hw.root) or hw.root
-                    except Exception as e:
-                        print("====================================")
-                        import traceback
+                        try:
+                            for transformer in transformers:
+                                hw.root = transformer.run(rudic, content, hw.root) or hw.root
+                        except Exception as e:
+                            print("====================================")
+                            import traceback
 
-                        traceback.print_exc()
-                        raise
+                            traceback.print_exc()
+                            raise
 
-                    if hw.root:
-                        payload = hw.render()
+                        if hw.root:
+                            payload = hw.render()
+                        else:
+                            payload = content
                     else:
                         payload = content
-                else:
-                    payload = content
 
                 self.send_response(200)
                 self.send_header("Content-Type", rudic.rudif.get_content_type())
