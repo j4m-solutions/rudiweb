@@ -25,7 +25,7 @@ def main(rudic, content, root, *args, **kwargs):
             body = root.find1(Element("body"))
             children = body.children
             body.children = []
-            body.add(ef.section(ef.div(_class="container").addl(children)))
+            body.add(ef.section(ef.div(_class="container").add(*children)))
 
         return root
     except Exception as e:

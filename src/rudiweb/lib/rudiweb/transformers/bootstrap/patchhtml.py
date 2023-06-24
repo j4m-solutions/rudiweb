@@ -38,7 +38,7 @@ def main(rudic, content, root, *args, **kwargs):
 
                 # general
                 if o.tag == "table":
-                    o.add_attr("class", ["table", "table-striped", "table-hover"])
+                    o.add_attrs(("class", ["table", "table-striped", "table-hover"]))
 
                 elif o.tag == "div":
                     attr = o.attrs.get("class")
@@ -49,26 +49,26 @@ def main(rudic, content, root, *args, **kwargs):
                     if "admonition" in attr.values:
                         # in order of likelihood
                         if "info" in attr.values:
-                            attr.extend(["alert", "alert-info"])
+                            attr.update(["alert", "alert-info"])
                         elif "note" in attr.values:
-                            attr.extend(["alert", "alert-note"])
+                            attr.update(["alert", "alert-note"])
                         elif "warning" in attr.values:
-                            attr.extend(["alert", "alert-warning"])
+                            attr.update(["alert", "alert-warning"])
                         elif "tip" in attr.values:
-                            attr.extend(["alert", "alert-tip"])
+                            attr.update(["alert", "alert-tip"])
                         elif "danger" in attr.values:
-                            attr.extend(["alert", "alert-danger"])
+                            attr.update(["alert", "alert-danger"])
                         elif "success" in attr.values:
-                            attr.extend(["alert", "alert-success"])
+                            attr.update(["alert", "alert-success"])
                         elif "primary" in attr.values:
-                            attr.extend(["alert", "alert-primary"])
+                            attr.update(["alert", "alert-primary"])
                         elif "secondary" in attr.values:
-                            attr.extend(["alert", "alert-secondary"])
+                            attr.update(["alert", "alert-secondary"])
                         elif "dark" in attr.values:
-                            attr.extend(["alert", "alert-dark"])
+                            attr.update(["alert", "alert-dark"])
                         elif "light" in attr.values:
-                            attr.extend(["alert", "alert-light"])
-                        o.add_attr("role", "alert")
+                            attr.update(["alert", "alert-light"])
+                        o.add_attrs(_role="alert")
 
             body.walk_callback(patch)
 

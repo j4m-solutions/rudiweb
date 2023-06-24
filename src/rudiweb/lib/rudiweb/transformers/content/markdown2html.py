@@ -41,7 +41,7 @@ def main(rudic, content, root, *args, **kwargs):
         hp.feed(markdown.markdown(content, extensions=extensions, output_format="html"))
 
         body = root.find1(Element("body"))
-        body.addl(hp.get_root().children)
+        body.add(*hp.get_root().children)
 
         return root
     except Exception as e:

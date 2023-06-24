@@ -114,7 +114,9 @@ def main(rudic, content, root, *args, **kwargs):
             from left to right, right justified on the navbar.
     """
     try:
-        head, body = root.get_headbody()
+        html = root.find1(Element("html"))
+        head = html.find1(Element("head"))
+        body = html.find1(Element("body"))
 
         # update from kwargs
         bootstrap_theme = kwargs.get("bootstrap_theme")
@@ -125,12 +127,11 @@ def main(rudic, content, root, *args, **kwargs):
         navbar_items = kwargs.get("navbar_items")
 
         if bootstrap_theme:
-            html = root.children[0]
-            html.set_attr("data-bs-theme", bootstrap_theme)
+            html.set_attrs("data-bs-theme", {bootstrap_theme})
         if brand_logo_image_classes:
             BRAND_LOGO_IMG_ELEMENT.add_attrs(_class=brand_logo_image_classes)
         if brand_logo_href:
-            BRAND_LOGO_IMG_ELEMENT.set_attr("src", brand_logo_href)
+            BRAND_LOGO_IMG_ELEMENT.set_attrs("src", {brand_logo_href})
         if brand_name:
             BRAND_NAME_TEXT.set(brand_name)
         if copyright_string:
@@ -154,7 +155,7 @@ def main(rudic, content, root, *args, **kwargs):
                     )
 
         # TODO: prepend?
-        head.addl(HEAD)
+        head.add(*HEAD)
         try:
             parent, base = rudic.rudif.nameroot.rsplit("/", 1)
             head.add(ef.title(f"{base} ({parent})"))
@@ -164,13 +165,13 @@ def main(rudic, content, root, *args, **kwargs):
         # navbar (slip in before the content)
         children = body.children
         body.children = []
-        body.addl(NAVBAR)
+        body.add(*NAVBAR)
         # body.add(ef.section(div := ef.div(_class="container")))
         # div.children.extend(children)
-        body.addl(children)
+        body.add(*children)
 
-        body.addl(FOOTER)
-        body.addl(BOTTOM)
+        body.add(*FOOTER)
+        body.add(*BOTTOM)
 
         return root
     except Exception as e:
