@@ -31,7 +31,7 @@ Classes:
 * `RudiTransformer`
 """
 
-__VERSION__ = "0.2"
+__VERSION__ = "0.3"
 
 import base64
 import calendar
