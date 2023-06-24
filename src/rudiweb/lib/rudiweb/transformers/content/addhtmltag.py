@@ -50,7 +50,7 @@ def main(rudic, content, root, *args, **kwargs):
             else:
                 contents = [string]
 
-            print(f"{contents=}")
+            # print(f"{contents=}")
             body.add(
                 ef.div(
                     *contents,
