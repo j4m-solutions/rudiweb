@@ -52,7 +52,7 @@ import traceback
 from urllib.parse import unquote, urlparse
 import yaml
 
-from lib.htmlwriter import HTML5ElementFactory, HTMLWriter
+from lib.htmlwriter import HTML5ElementFactory, HTMLWriter, escape
 
 logger = logging.getLogger(__name__)
 
@@ -445,11 +445,20 @@ class RudiHandler(BaseHTTPRequestHandler):
             self.do_404_response(rudic)
             return
 
+        logger.debug(f"{rudic.rudif.docpath=}")
         # generate response
         if rudis.type == "asis":
-            self.do_asis_response(rudic)
+            modified_since = self.headers.get("If-Modified-Since")
+            if modified_since != None and not rudic.rudif.is_newer(modified_since):
+                self.do_304_response(rudic)
+            else:
+                self.do_200_response(rudic)
         else:
-            self.do_default_response(rudic)
+            self.do_200_response(rudic)
+
+    def do_200_response(self, rudic):
+        self.send_response(200)
+        self.do_default_response(rudic)
 
     def do_301_response(self, rudic, location):
         """301 Redirect response.
@@ -489,7 +498,12 @@ class RudiHandler(BaseHTTPRequestHandler):
         logger.debug(f"""{status.value} {status.phrase}""")
 
         self.send_response(status)
-        self.end_headers()
+        rudic.rudif.fallback = f"""\
+<h2>Page not found.</h2>
+<p>The resource at {escape(rudic.docpath)} is not found/available."""
+
+        rudic.rudif.nameext = ".html"
+        self.do_default_response(rudic)
 
     def do_asis_response(self, rudic):
         """Respond with content as-is (unchanged), without decoration.
@@ -501,54 +515,49 @@ class RudiHandler(BaseHTTPRequestHandler):
         try:
             logger.debug(f"do_asis_response ({rudic.docpath=})")
 
-            modified_since = self.headers.get("If-Modified-Since")
-            if modified_since != None and not rudic.rudif.is_newer(modified_since):
-                self.do_304_response(rudic)
+            # load initial content
+            content = rudic.rudif.load()
+
+            # TODO: avoid redundant checked if called from do_default_response()
+            if rudic.rudif.get_extension() in ASIS_EXTENSIONS:
+                payload = content
             else:
-                # load initial content
-                content = rudic.rudif.load()
+                # apply transformers
+                transformers = rudic.rudis.get_transformers(rudic.rudif.get_extension())
+                logger.debug(f"transformers ({transformers})")
+                if transformers:
+                    # load initial document
+                    hw = HTMLWriter()
+                    ef = HTML5ElementFactory()
+                    hw.root.add(ef.html(ef.head(), ef.body()))
 
-                # TODO: avoid redundant checked if called from do_default_response()
-                if rudic.rudif.get_extension() in ASIS_EXTENSIONS:
-                    payload = content
-                else:
-                    # apply transformers
-                    transformers = rudic.rudis.get_transformers(rudic.rudif.get_extension())
-                    logger.debug(f"transformers ({transformers})")
-                    if transformers:
-                        # load initial document
-                        hw = HTMLWriter()
-                        ef = HTML5ElementFactory()
-                        hw.root.add(ef.html(ef.head(), ef.body()))
+                    try:
+                        for transformer in transformers:
+                            hw.root = transformer.run(rudic, content, hw.root) or hw.root
+                    except Exception as e:
+                        print("====================================")
+                        import traceback
 
-                        try:
-                            for transformer in transformers:
-                                hw.root = transformer.run(rudic, content, hw.root) or hw.root
-                        except Exception as e:
-                            print("====================================")
-                            import traceback
+                        traceback.print_exc()
+                        raise
 
-                            traceback.print_exc()
-                            raise
-
-                        if hw.root:
-                            payload = hw.render()
-                        else:
-                            payload = content
+                    if hw.root:
+                        payload = hw.render()
                     else:
                         payload = content
+                else:
+                    payload = content
 
-                self.send_response(200)
-                self.send_header("Content-Type", rudic.rudif.get_content_type())
-                self.send_header("Content-Length", str(len(payload)))
+            self.send_header("Content-Type", rudic.rudif.get_content_type())
+            self.send_header("Content-Length", str(len(payload)))
 
-                last_modified = rudic.rudif.get_http_date()
-                if last_modified:
-                    self.send_header("Cache-Control", "max-age=120")
-                    self.send_header("Last-Modified", last_modified)
-                self.end_headers()
+            last_modified = rudic.rudif.get_http_date()
+            if last_modified:
+                self.send_header("Cache-Control", "max-age=120")
+                self.send_header("Last-Modified", last_modified)
+            self.end_headers()
 
-                self.write_payload(payload)
+            self.write_payload(payload)
         except Exception as e:
             if server.debug:
                 traceback.print_exc()
@@ -575,6 +584,8 @@ class RudiHandler(BaseHTTPRequestHandler):
 
     def do_decorated_response(self, rudic):
         """Response with decorated HTML content."""
+        logger.debug(f"do_decorated_response ({rudic.docpath=})")
+
         parts = []
 
         # load initial document
@@ -597,7 +608,6 @@ class RudiHandler(BaseHTTPRequestHandler):
 
         payload = hw.render()
 
-        self.send_response(200)
         self.send_header("Content-Type", "text/html")
         self.send_header("Content-Length", str(len(payload)))
         self.end_headers()
@@ -618,10 +628,12 @@ class RudiHandler(BaseHTTPRequestHandler):
             logger.debug(f"do_default_response ({rudic.docpath=})")
 
             ext = rudic.rudif.get_extension()
-            if ext in DECORATABLE_EXTENSIONS:
-                self.do_decorated_response(rudic)
-            elif ext in ASIS_EXTENSIONS:
+            if rudic.rudis.type == "asis" or ext in ASIS_EXTENSIONS:
                 self.do_asis_response(rudic)
+            elif rudic.rudis.type == "html" or ext in DECORATABLE_EXTENSIONS:
+                self.do_decorated_response(rudic)
+            else:
+                logger.debug(f"***** unexpected *****")
         except Exception as e:
             if server.debug:
                 traceback.print_exc()
