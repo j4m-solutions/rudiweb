@@ -659,8 +659,17 @@ class Text(Node):
             return self
 
     def render(self, writer, parent):
-        """Render safely."""
-        return escape(self.s, quote=False)
+        """Render safely.
+
+        Note: Special case for parent of <script>.
+        """
+        if isinstance(parent, Element) and parent.tag == "script":
+            s = self.s
+            if "<script" in s:
+                raise Exception("bad <script> contents")
+        else:
+            s = escape(self.s, quote=False)
+        return s
 
     def set(self, s):
         self.s = s
